@@ -2,6 +2,8 @@ const express = require('express')
 const app = express()
 const bodyParser = require('body-parser')
 const shortId= require('shortid')
+const moment = require('moment');
+moment().format();
 
 
 const cors = require('cors')
@@ -17,12 +19,13 @@ mongoose.connect(process.env.MLAB_URI || 'mongodb://localhost/exercise-track' ).
 
 const userSchema = new mongoose.Schema({
   
-  shortId: {type: String, unique: true, default: shortId.generate},
+  _id: {type: String, unique: true, default: shortId.generate},
    username:String,
     exercise:[{
+      	_id:false,  
       desc:String,
       duration:Number,
-      date:{}
+      date:{type:Date}
     }]
   }
   
@@ -77,7 +80,7 @@ Person.findOne({username:name}, (err,findData)=>{
 //}
 
 const addExercise = (personId, activity, done) => {
-  Person.findOne({shortId:personId}, (err,data)=>{
+  Person.findOne({_id:personId}, (err,data)=>{
     //add to array
     if (data == null){
       done(null,'notFound');
@@ -85,7 +88,9 @@ const addExercise = (personId, activity, done) => {
       if (data.exercise.length === 0) {
         data.exercise = data.exercise.concat([activity]);
       }else if (data.exercise.date == null){
-          data.exercise.splice(0,0,activity);
+        data.exercise.data= new Date()
+         data.exercise.splice(0,0,activity);
+     //   console.log('err: ',data.exercise.splice(0,0,activity))
       }else{
         let mark = 'pending';
         for (let i = 0; i<data.exercise.length; i++){
@@ -122,7 +127,7 @@ app.post('/api/exercise/new-user',(req,res,next) => {
     }else if (saveData === 'taken'){
       res.send({"error":"Username already taken"})
     }else{
-      res.send({"username":saveData.username,"id":saveData.shortId});
+      res.send({"username":saveData.username,"_id":saveData._id});
     }
   });
  
@@ -131,8 +136,9 @@ app.post('/api/exercise/new-user',(req,res,next) => {
 
 app.post('/api/exercise/add',(req,res) => {
   let dateVar = '';
-  if (req.body.date != ''){
-    dateVar = new Date(req.body.date); 
+  if (req.body.date == ''){
+    dateVar = new Date(); 
+    console.log(dateVar)
   }
   
   let activity = {
@@ -146,14 +152,14 @@ app.post('/api/exercise/add',(req,res) => {
     }else if (saveData === 'notFound'){
       res.send({"error":"User not found"})
     }else{
-      res.send({"username":saveData.username,"description":activity.desc,"duration":activity.duration,"id":saveData.shortId,"date":activity.date});
+      res.send({"username":saveData.username,"description":activity.desc,"duration":activity.duration,"_id":saveData._id,"date":activity.date});
     }
   })
 });
 
 app.get('/api/exercise/log/:userId',(req,res) => {
   
-  Person.findOne({shortId:req.params.userId}, (err,data) =>{
+  Person.findOne({_id:req.params.userId}, (err,data) =>{
     if (data == null){
       res.send({"error":"User not found"});
     }else{
@@ -179,7 +185,11 @@ app.get('/api/exercise/log/:userId',(req,res) => {
   });
 });
 
-
+app.get('/api/exercise/users',(req, res)=>{
+    Person.find({},'id username',(err, docs) =>{
+	   res.send(docs);
+    });
+});
 
 
 app.use((req, res, next) => {
