@@ -12,7 +12,8 @@
     "mongodb": "^3.5.7",
     "body-parser": "^1.19.0",
     "cors": "^2.8.5",
-    "shortid": "^2.2.15"
+    "shortid": "^2.2.15",
+    "moment": "^2.25.3"
   },
   "engines": {
     "node": "6.9.1"
