@@ -1,9 +1,8 @@
 const express = require('express')
 const app = express()
 const bodyParser = require('body-parser')
-const shortId= require('shortid')
-const moment = require('moment');
-moment().format();
+const shortid= require('shortid')
+const User = require("./model");
 
 
 const cors = require('cors')
@@ -17,185 +16,172 @@ mongoose.connect(process.env.MLAB_URI || 'mongodb://localhost/exercise-track' ).
   console.log('Err ')
 })
 
-const userSchema = new mongoose.Schema({
-  
-  _id: {type: String, unique: true, default: shortId.generate},
-   username:String,
-    exercise:[{
-      	_id:false,  
-      desc:String,
-      duration:Number,
-      date:{type:Date}
-    }]
-  }
-  
-)
+app.use(cors());
 
-var Person = mongoose.model('Person',userSchema)
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json());
 
-
-
-app.use(cors())
-
-app.use(bodyParser.urlencoded({extended: false}))
-app.use(bodyParser.json())
-
-
-app.use(express.static('public'))
-app.get('/', (req, res) => {
-  res.sendFile(__dirname + '/views/index.html')
+app.use(express.static("public"));
+app.get("/", (req, res) => {
+  res.sendFile(__dirname + "/views/index.html");
 });
 
-
-// Not found middleware
-
-function isValidDate(d) {
-  return d instanceof Date && !isNaN(d);
-}
-
-const createPerson = (name, done) => {
-Person.findOne({username:name}, (err,findData)=>{
-    if (findData == null){
-    
-      const person = new Person({username : name, exercise : []});
-      person.save((err,data)=>{
-        if(err){
-          done(err);
-        }
-        done(null , data);
-      });
-    }else if (err){
-      done(err);
-    }else{
-      //username taken
-      done(null,"taken");
-    }
+//******/
+app.get("/api/exercise/users", function(req, res) {
+  User.find({}, function(err, allUser) {
+    if (err) return console.log(err);
+    res.json(
+      allUser.map(user => ({
+        _id: user._id,
+        username: user.username,
+        __v: user.__v
+      }))
+    );
   });
-}
- // Person.findOne({username:name}, (err,findData)=>{
-    //console.log(findData)
-  
-  
- 
-//}
-
-const addExercise = (personId, activity, done) => {
-  Person.findOne({_id:personId}, (err,data)=>{
-    //add to array
-    if (data == null){
-      done(null,'notFound');
-    }else{
-      if (data.exercise.length === 0) {
-        data.exercise = data.exercise.concat([activity]);
-      }else if (data.exercise.date == null){
-        data.exercise.data= new Date()
-         data.exercise.splice(0,0,activity);
-     //   console.log('err: ',data.exercise.splice(0,0,activity))
-      }else{
-        let mark = 'pending';
-        for (let i = 0; i<data.exercise.length; i++){
-          if (activity.date < data.exercise[i].date){
-            data.exercise.splice(i,0,activity);
-            mark = 'done'
-            break;
-          }
-        }
-        if (mark === 'pending'){
-         data.exercise = data.exercise.concat(activity); 
-        }
-      }       
-      //save
-      data.save((err, data) => {
-        if (err) {
-          console.log(err);
-          done(err) 
-        } else { 
-          done(null, data) 
-        }
-      });
-    }
- });
-};
-
-
-
-app.post('/api/exercise/new-user',(req,res,next) => {
-  createPerson(req.body.username, (err,saveData)=>{
-    console.log(saveData)
-    if(err){
-      res.send({error:"Error, Please try again"});
-    }else if (saveData === 'taken'){
-      res.send({"error":"Username already taken"})
-    }else{
-      res.send({"username":saveData.username,"_id":saveData._id});
-    }
-  });
- 
 });
 
+app.post("/api/exercise/new-user", function(req, res) {
+  let username = req.body.username;
 
-app.post('/api/exercise/add',(req,res) => {
-  let dateVar = '';
-  if (req.body.date == ''){
-    dateVar = new Date(); 
-    console.log(dateVar)
-  }
-  
-  let activity = {
-    desc : req.body.description,
-    duration: req.body.duration,
-    date: dateVar
-  }
-  addExercise(req.body.userId,activity,(err,saveData)=>{
-    if(err){
-      res.send({error:"Error, Please try again"});
-    }else if (saveData === 'notFound'){
-      res.send({"error":"User not found"})
-    }else{
-      res.send({"username":saveData.username,"description":activity.desc,"duration":activity.duration,"_id":saveData._id,"date":activity.date});
-    }
-  })
-});
-
-app.get('/api/exercise/log/:userId',(req,res) => {
-  
-  Person.findOne({_id:req.params.userId}, (err,data) =>{
-    if (data == null){
-      res.send({"error":"User not found"});
-    }else{
-      let results = data.exercise;
-      
-      let fromDate = new Date(req.query.from);
-      let toDate = new Date(req.query.to);
-      let limit = Number(req.query.limit);
-      //check if to is defined
-      if (isValidDate(toDate)){
-        results = results.filter((item) => (item.date >= fromDate && item.date <= toDate));
-      //check if just from defined
-      }else if(isValidDate(fromDate)){
-        results = results.filter((item)=>(item.date >= fromDate))
+  if (username === "") {
+    res.send("Path `username` is required");
+  } else if (username.length > 29) {
+    return res.send("username too long");
+  } else {
+    const newUser = { username: username };
+    User.findOne({ username: newUser.username }, (err, data) => {
+      if (err) res.json({err:err});
+      if (data) {
+        return res.send("username is already taken");
+      } else {
+        User.create(newUser, (err, newUser) => {
+          if (err) res.json({err:err});
+          res.json({username: newUser.username,_id: newUser._id });//res.json({name:req.body.username,id:docs._id});
+        });
       }
-      //apply limit if defined and applicable
-      if (!isNaN(limit) && results.length > limit){
-        results = results.slice(0,limit);
-      }
-      
-      res.send({"exercise":results});
-    }
-  });
-});
-
-app.get('/api/exercise/users',(req, res)=>{
-    Person.find({},'id username',(err, docs) =>{
-	   res.send(docs);
     });
+  }
 });
 
+function newData(data, arr) {
+  return (
+    (data.count = arr.length),
+    (data.log = arr.map(log => ({
+      description: log.description,
+      duration: log.duration,
+      date: log.date.toDateString()
+    })))
+  );
+}///api/exercise/log/:userId
 
-app.use((req, res, next) => {
-  return next({status: 404, message: 'not found'})
-})
+app.get("/api/exercise/log", (req, res)=> {
+ 
+  //req.query.username;
+  let userId = req.query.userId,
+    from = new Date(req.query.from),
+    to = new Date(req.query.to),
+    limit = +req.query.limit;
 
+  User.findById(userId, (err, user)=> {
+    if (err) console.log(err);
+    if (user) {
+      let log = user.log;
+      let newLog = [];
+      let data = {
+        _id: user._id,
+        username: user.username
+      };
+
+      if (!isNaN(from.valueOf()) && !isNaN(to.valueOf()) && !isNaN(limit)) {
+        newLog = log.filter(log => log.date >= from && log.date <= to);
+        data.from = from.toDateString();
+        data.to = to.toDateString();
+        let arrLog = [];
+        if (limit > 0 && limit <= newLog.length) {
+          for (let i = 0; i < limit; i++) {
+            arrLog.push(newLog[i]);
+          }
+          newLog = arrLog;
+        }
+        newData(data, newLog);
+      } else if (!isNaN(from.valueOf()) && !isNaN(to.valueOf())) {
+        newLog = log.filter(log => log.date >= from && log.date <= to);
+        data.from = from.toDateString();
+        data.to = to.toDateString();
+        newData(data, newLog);
+      } else if (!isNaN(limit) && limit > 0 && limit <= log.length) {
+        for (let i = 0; i < limit; i++) {
+          newLog.push(log[i]);
+        }
+        newData(data, newLog);
+      } else {
+        newData(data, log);
+      }
+
+      res.json(data);
+    } else {
+      return res.send("unknown userId");
+    }
+  });
+});
+
+/*
+User.findByIdAndUpdate(
+    input.userId,
+    { $push: { exercise: exerciseInstance } },
+    (err, doc) => {
+      if (err) return console.log("Error: ", err);
+      res.json({
+        username: doc.username,
+        exercise: exerciseInstance,  
+        _id: doc._id,
+      });
+    }
+  );
+
+*/
+
+
+app.post("/api/exercise/add", function(req, res) {
+  let { userId, description, duration, date } = req.body;
+  let log = { description, duration, date };
+
+  if (userId) {
+    User.findById(userId, function(err, user) {
+      if (err) res.json({err:err});
+      if (user) {
+        user.log.push(log);
+        user.save(function(err, user) {
+          if (err) res.json({err:err})
+          let newLog = user.log.length - 1;
+          res.json({
+            username: user.username,
+            description: user.log[newLog].description,
+            duration: user.log[newLog].duration,
+            _id: userId,
+            date: user.log[newLog].date.toDateString()
+          });
+        });
+      } else {
+        return res.send("userId " + req.body.userId + " not found");
+      }
+    });
+    
+  } else if (userId === "") {
+    return res.send("unknown _id");
+  } else if (duration === "") {
+    return res.send("Path `duration` is required.");
+  } else if (description === "") {
+   return res.send("Path `description` is required.");
+  } else if (description > 20) {
+    return res.send("description too long");
+  } else {
+    return res.send("error");
+  }
+}); 
+
+
+//
 // Error Handling middleware
 app.use((err, req, res, next) => {
   let errCode, errMessage
